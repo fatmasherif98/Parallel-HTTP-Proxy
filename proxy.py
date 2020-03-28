@@ -209,6 +209,47 @@ def parse_http_request(source_addr, http_raw_data):
     ret = HttpRequestInfo(None, None, None, None, None, None)
     return ret
 
+def validate_http_request(http_request_list):
+    #checking that all 3 required sections are available
+    if len(http_request_list[0].split()) != 3:
+        print("Wrong length ")
+        return HttpRequestState.INVALID_INPUT
+
+    method = http_request_list[0].split()[0]
+    url = http_request_list[0].split()[1]
+    http_version = http_request_list[0].split()[2]
+    check_host_header = False
+    #checking which form relative or absolute
+    if url[0] == '/':
+        check_host_header = True
+
+    if http_version.lower() != "http/1.0":
+        print("http version is wrong", http_version, "expected HTTP/1.0" )
+        return HttpRequestState.INVALID_INPUT
+
+    if check_host_header:
+        host_header_line = http_request_list[1].split(':')
+        if host_header_line[0].lower() != 'host':
+            print("host error fatma")
+            return HttpRequestState.INVALID_INPUT
+        elif not host_header_line[1]:
+            print(" empty host header")
+            return HttpRequestState.INVALID_INPUT
+    #checking headers format
+    if check_host_header:
+        i = 2
+    else:
+        i=1
+    print("this is i", i)
+    while i < len(http_request_list) and http_request_list[i]:
+        if len(http_request_list[i].split(':')) != 2:
+            print("In header loop check")
+            return HttpRequestState.INVALID_INPUT
+        i = i+1
+    return HttpRequestState.GOOD
+
+
+
 
 def check_http_request_validity(http_raw_data) -> HttpRequestState:
     """
@@ -217,11 +258,22 @@ def check_http_request_validity(http_raw_data) -> HttpRequestState:
     returns:
     One of values in HttpRequestState
     """
+    http_request_list = http_raw_data.split("\r\n")
+    method = http_request_list[0].split()[0]
+    res = HttpRequestState.GOOD
+    if method == "GET" or method == "POST" or method == "HEAD" or method == "PUT":
+        res = validate_http_request(http_request_list)
+        if method != "GET" and res == HttpRequestState.GOOD:
+            res = HttpRequestState.NOT_SUPPORTED
+    else:
+        print("else in original fn ")
+        res = HttpRequestState.INVALID_INPUT
+
     print("*" * 50)
     print("[check_http_request_validity] Implement me!")
     print("*" * 50)
     # return HttpRequestState.GOOD (for example)
-    return HttpRequestState.PLACEHOLDER
+    return res
 
 
 def sanitize_http_request(request_info: HttpRequestInfo):

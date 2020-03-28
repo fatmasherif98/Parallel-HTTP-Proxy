@@ -258,7 +258,7 @@ def main():
     # any of those functions.
     try:
         simple_http_validation_test_cases()
-        simple_http_parsing_test_cases()
+       # simple_http_parsing_test_cases()
     except AssertionError as e:
         print("Test case failed:\n", str(e))
         exit(-1)
