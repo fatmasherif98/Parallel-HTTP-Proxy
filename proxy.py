@@ -2,6 +2,7 @@
 import sys
 import os
 import enum
+from urllib.parse import urlparse
 
 
 class HttpRequestInfo(object):
@@ -68,9 +69,15 @@ class HttpRequestInfo(object):
         """
 
         print("*" * 50)
-        print("[to_http_string] Implement me!")
+        output_string = ""
+        output_string = self.method +" "+ self.requested_path + " HTTP/1.0\r\n"
+        for ls in self.headers:
+            if ls[0] == "Host" and self.requested_port != 80:
+                ls[1] = ls[1] + ":" + str(self.requested_port)
+            output_string = output_string + ls[0]+ ": " + ls[1] +"\r\n"
+        output_string = output_string + "\r\n"
         print("*" * 50)
-        return None
+        return output_string
 
     def to_byte_array(self, http_string):
         """
@@ -196,23 +203,81 @@ def http_request_pipeline(source_addr, http_raw_data):
     print("*" * 50)
     return None
 
+def parse_relative_url(host_path):
+    words = host_path.split(':')
+    if len(words) == 3: #port number is given
+        port = words[2].strip()
+    else:
+        port = '80'
+    host = words[1].strip()
+    return host, port
+def parse_absolute_url(url):
+    parsed_url = urlparse(url)
+    if parsed_url.port == None:
+        port = '80'
+    else:
+        port = parsed_url.port
+    host_name = parsed_url.hostname
+    print("host name fatma : ", host_name)
+    path = parsed_url.path
+    return host_name, path, port
+
+
+
 
 def parse_http_request(source_addr, http_raw_data):
     """
     This function parses a "valid" HTTP request into an HttpRequestInfo
     object.
     """
+    header_list = []
+    http_request_list = http_raw_data.split("\r\n")
+    method = http_request_list[0].split()[0].strip()
+
+
+    print("fatma ", http_raw_data)
+    if http_request_list[1].split(':')[0].strip() == 'Host':
+        relative_path = True
+        print("in the true ")
+    else:
+        print("in the false",http_request_list[1].strip(":").lower() )
+        relative_path = False
+    if relative_path:
+        host, port =parse_relative_url(http_request_list[1])
+        path = urlparse(http_request_list[0].split()[1].strip()).path
+        #http_request_list[0].split()[1].strip()
+    else:
+        http_check = http_request_list[0].split()[1].split('/').strip()
+        if http_check != "http:":
+            url = "http://" + http_request_list[0].split()[1].strip()
+        else:
+            url = http_request_list[0].split()[1].strip()
+        host, path, port = parse_absolute_url( url)
+    print("host is ", host,"path is ",path)
+    for i in range(1, len(http_request_list)):
+        if not http_request_list[i]:
+            continue
+        current_list = []
+        splitting = http_request_list[i].split(':')
+        if i == 1 and relative_path:
+            current_list.append(splitting[0].strip())
+            current_list.append(splitting[1].strip())
+        else:
+            current_list.append(splitting[0].strip())
+            current_list.append(splitting[1].strip())
+        print("fatma list ", current_list)
+        header_list.append(current_list)
+
     print("*" * 50)
     print("[parse_http_request] Implement me!")
     print("*" * 50)
     # Replace this line with the correct values.
-    ret = HttpRequestInfo(None, None, None, None, None, None)
+    ret = HttpRequestInfo( source_addr, method, host, port, path, header_list)
     return ret
 
 def validate_http_request(http_request_list):
     #checking that all 3 required sections are available
     if len(http_request_list[0].split()) != 3:
-        print("Wrong length ")
         return HttpRequestState.INVALID_INPUT
 
     method = http_request_list[0].split()[0]
@@ -224,26 +289,22 @@ def validate_http_request(http_request_list):
         check_host_header = True
 
     if http_version.lower() != "http/1.0":
-        print("http version is wrong", http_version, "expected HTTP/1.0" )
         return HttpRequestState.INVALID_INPUT
 
     if check_host_header:
         host_header_line = http_request_list[1].split(':')
         if host_header_line[0].lower() != 'host':
-            print("host error fatma")
             return HttpRequestState.INVALID_INPUT
         elif not host_header_line[1]:
-            print(" empty host header")
             return HttpRequestState.INVALID_INPUT
     #checking headers format
     if check_host_header:
         i = 2
     else:
         i=1
-    print("this is i", i)
+
     while i < len(http_request_list) and http_request_list[i]:
         if len(http_request_list[i].split(':')) != 2:
-            print("In header loop check")
             return HttpRequestState.INVALID_INPUT
         i = i+1
     return HttpRequestState.GOOD
@@ -287,7 +348,14 @@ def sanitize_http_request(request_info: HttpRequestInfo):
     nothing, but modifies the input object
     """
     print("*" * 50)
-    print("[sanitize_http_request] Implement me!")
+    list_headers = request_info.headers
+    if list_headers[0][0].strip() == "Host":
+        return
+    host_header = []
+    host_header.append("Host")
+    host_header.append(request_info.requested_host)
+    request_info.headers.insert(0, host_header)
+
     print("*" * 50)
 
 
@@ -347,8 +415,12 @@ def main():
     print("*" * 50)
 
     # This argument is optional, defaults to 18888
-    proxy_port_number = get_arg(1, 18888)
-    entry_point(proxy_port_number)
+    #proxy_port_number = get_arg(1, 18888)
+    #entry_point(proxy_port_number)
+    string = "/things"
+    o = urlparse(string)
+    print("prt ", o.port, " host ", o.hostname, "path ", o.path)
+
 
 
 if __name__ == "__main__":
