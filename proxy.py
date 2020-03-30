@@ -2,7 +2,9 @@
 import sys
 import os
 import enum
-
+import struct
+import socket
+from threading import Thread,Event
 
 class HttpRequestInfo(object):
     """
@@ -124,15 +126,10 @@ class HttpRequestState(enum.Enum):
 
 
 def entry_point(proxy_port_number):
-    """
-    Entry point, start your code here.
-
-    Please don't delete this function,
-    but feel free to modify the code
-    inside it.
-    """
-
-    setup_sockets(proxy_port_number)
+    socket_client=setup_sockets(proxy_port_number)
+    socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    packet, address=socket_client.recvfrom(512)
+    print(packet)
     print("*" * 50)
     print("[entry_point] Implement me!")
     print("*" * 50)
@@ -140,14 +137,9 @@ def entry_point(proxy_port_number):
 
 
 def setup_sockets(proxy_port_number):
-    """
-    Socket logic MUST NOT be written in the any
-    class. Classes know nothing about the sockets.
-
-    But feel free to add your own classes/functions.
-
-    Feel free to delete this function.
-    """
+    socket_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    proxy_address = ("127.0.0.1", proxy_port_number)
+    socket_client.bind(proxy_address)
     print("Starting HTTP proxy on port:", proxy_port_number)
 
     # when calling socket.listen() pass a number
@@ -156,7 +148,7 @@ def setup_sockets(proxy_port_number):
     print("*" * 50)
     print("[setup_sockets] Implement me!")
     print("*" * 50)
-    return None
+    return socket_client
 
 
 def do_socket_logic():
