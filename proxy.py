@@ -4,7 +4,8 @@ import os
 import enum
 import struct
 import socket
-from threading import Thread,Event
+import threading
+
 
 class HttpRequestInfo(object):
     """
@@ -103,9 +104,7 @@ class HttpErrorResponse(object):
         pass
 
     def to_byte_array(self, http_string):
-        """
-        Converts an HTTP string to a byte array.
-        """
+
         return bytes(http_string, "UTF-8")
 
     def display(self):
@@ -113,12 +112,6 @@ class HttpErrorResponse(object):
 
 
 class HttpRequestState(enum.Enum):
-    """
-    The values here have nothing to do with
-    response values i.e. 400, 502, ..etc.
-
-    Leave this as is, feel free to add yours.
-    """
     INVALID_INPUT = 0
     NOT_SUPPORTED = 1
     GOOD = 2
@@ -126,38 +119,59 @@ class HttpRequestState(enum.Enum):
 
 
 def entry_point(proxy_port_number):
-    socket_client=setup_sockets(proxy_port_number)
-    socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    packet, address=socket_client.recvfrom(512)
-    print(packet)
-    print("*" * 50)
-    print("[entry_point] Implement me!")
+    socket_client,socket_server = setup_sockets(proxy_port_number)
+    cache = dict()
+    threads=[]
+    for i in range(30):
+        t = threading.Thread(target=do_socket_logic, args=(socket_client, socket_server,cache,))
+        t.start()
+        threads.append(t)
+    for i in threads:
+        i.join()
+
     print("*" * 50)
     return None
 
 
 def setup_sockets(proxy_port_number):
     socket_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     proxy_address = ("127.0.0.1", proxy_port_number)
     socket_client.bind(proxy_address)
+    socket_client.listen(30)
+
     print("Starting HTTP proxy on port:", proxy_port_number)
 
-    # when calling socket.listen() pass a number
-    # that's larger than 10 to avoid rejecting
-    # connections automatically.
     print("*" * 50)
-    print("[setup_sockets] Implement me!")
-    print("*" * 50)
-    return socket_client
+    return socket_client ,socket_server
 
 
-def do_socket_logic():
-    """
-    Example function for some helper logic, in case you
-    want to be tidy and avoid stuffing the main function.
+def do_socket_logic(socket_client: socket,socket_server: socket,cache: dict):
 
-    Feel free to delete this function.
-    """
+    (conn, address) = socket_client.accept()
+    msg = ''
+    while True:
+        packet=conn.recv(500)
+        if packet ==b'\r\n':
+            break
+        msg = msg + packet.decode('utf-8')
+    print(msg)
+
+    if validate_http_request(msg)==HttpRequestState.INVALID_INPUT:
+        response=HttpErrorResponse(0,'Invalid Input')
+    elif check_http_request_validity(msg)==HttpRequestState.NOT_SUPPORTED:
+        response = HttpErrorResponse(1, 'Not Supported')
+        #send error to client
+    else: #good
+        if msg in cache:
+            response=cache[msg]
+            #send response to client
+        else:
+            request = parse_http_request(address,msg)
+            #send request to server
+            #wait for response
+            #add response to cache
+            #return response to client
     pass
 
 
@@ -289,13 +303,6 @@ def sanitize_http_request(request_info: HttpRequestInfo):
 
 
 def get_arg(param_index, default=None):
-    """
-        Gets a command line argument by index (note: index starts from 1)
-        If the argument is not supplies, it tries to use a default value.
-
-        If a default value isn't supplied, an error message is printed
-        and terminates the program.
-    """
     try:
         return sys.argv[param_index]
     except IndexError as e:
