@@ -52,23 +52,6 @@ class HttpRequestInfo(object):
         self.headers = headers
 
     def to_http_string(self):
-        """
-        Convert the HTTP request/response
-        to a valid HTTP string.
-        As the protocol specifies:
-
-        [request_line]\r\n
-        [header]\r\n
-        [headers..]\r\n
-        \r\n
-
-        (just join the already existing fields by \r\n)
-
-        You still need to convert this string
-        to byte array before sending it to the socket,
-        keeping it as a string in this stage is to ease
-        debugging and testing.
-        """
 
         print("*" * 50)
         output_string = ""
@@ -82,9 +65,6 @@ class HttpRequestInfo(object):
         return output_string
 
     def to_byte_array(self, http_string):
-        """
-        Converts an HTTP string to a byte array.
-        """
         return bytes(http_string, "UTF-8")
 
     def display(self):
@@ -156,9 +136,7 @@ def setup_sockets(proxy_port_number):
     proxy_address = ("127.0.0.1", proxy_port_number)
     socket_client.bind(proxy_address)
     socket_client.listen(30)
-
     print("Starting HTTP proxy on port:", proxy_port_number)
-
     print("*" * 50)
     return socket_client ,socket_server
 
@@ -173,22 +151,28 @@ def do_socket_logic(socket_client: socket,socket_server: socket,cache: dict):
             break
         msg = msg + packet.decode('utf-8')
     print(msg)
-
-    if validate_http_request(msg)==HttpRequestState.INVALID_INPUT:
-        response=HttpErrorResponse(0,'Invalid Input')
-    elif check_http_request_validity(msg)==HttpRequestState.NOT_SUPPORTED:
-        response = HttpErrorResponse(1, 'Not Supported')
-        #send error to client
+    response = http_request_pipeline(address,msg)
+    if isinstance(response,HttpErrorResponse):
+        print('Error')
+        packet = response.to_byte_array(response.to_http_string())
+        socket_client.sendto(packet,address)
     else: #good
-        if msg in cache:
-            response=cache[msg]
-            #send response to client
+        url=response.requested_host+response.requested_path
+        if url in cache:
+            packet=cache[url]
+            socket_client.sendto(packet,address)
         else:
-            request = parse_http_request(address,msg)
-            #send request to server
-            #wait for response
-            #add response to cache
-            #return response to client
+            packet = response.to_byte_array(response.to_http_string())
+            server_address=(response.requested_host,response.requested_port)
+
+            socket_server.connect(server_address)
+            socket_server.send(packet)
+
+            (server_conn, server_address) = socket_server.accept()
+            response_packet = server_conn.recv(1000000)
+
+            cache[url]=response_packet
+            socket_client.sendto(response_packet,address)
     pass
 
 def http_request_pipeline(source_addr, http_raw_data):
@@ -395,11 +379,11 @@ def main():
     print("*" * 50)
 
     # This argument is optional, defaults to 18888
-    #proxy_port_number = get_arg(1, 18888)
-    #entry_point(proxy_port_number)
-    string = "http://www.google.com/"
-    o = urlparse(string)
-    print("prt ", o.port, " host ", o.hostname, "path ", o.path)
+    proxy_port_number = get_arg(1, 18888)
+    entry_point(proxy_port_number)
+    #string = "http://www.google.com/"
+    #o = urlparse(string)
+    #print("prt ", o.port, " host ", o.hostname, "path ", o.path)
     #parse_http_request( ['127.0.0.1', '80'], string)
 
 
