@@ -210,6 +210,9 @@ def parse_relative_url(host_path):
 
 
 def parse_absolute_url(url):
+    url_split = url.split(':')
+    if len(url_split) > 1 and url_split[0].lower() != "http":
+        url = "http://" + url + "/"
     parsed_url = urlparse(url)
     if parsed_url.port == None:
         port = 80
@@ -219,16 +222,16 @@ def parse_absolute_url(url):
     path = parsed_url.path
     if not host_name:
         host_name = path
+    print( "Host :", host_name, "path: ", path, "Port: ", port )
     return host_name, path, port
 
 
 def parse_http_request(source_addr, http_raw_data):
-    print("*" * 50)
     header_list = []
     http_request_list = http_raw_data.split("\r\n")
     method = http_request_list[0].split()[0].strip()
 
-    if http_request_list[1].split(':')[0].strip() == 'Host':
+    if len( http_request_list) > 1 and http_request_list[1].split(':')[0].strip().lower() == 'host':
         relative_path = True
     else:
         relative_path = False
@@ -313,14 +316,21 @@ def check_http_request_validity(http_raw_data) -> HttpRequestState:
 
 def sanitize_http_request(request_info: HttpRequestInfo):
 
-    print("*" * 50)
+    if not request_info.requested_path:
+        host, path, port = parse_absolute_url(request_info.requested_host)
+        request_info.requested_host = host
+        request_info.requested_path = path
+        request_info.requested_port = port
+
     list_headers = request_info.headers
-    if list_headers[0][0].strip() == "Host": #first list in header_list, first item in this list
+    if len(list_headers) > 1 and list_headers[0][0].strip() == "Host": #first list in header_list, first item in this list
         return
     host_header = ["Host", request_info.requested_host]
     request_info.headers.insert(0, host_header)
-    print("*" * 50)
+
     return
+
+
 
 
 #######################################
@@ -381,6 +391,7 @@ def main():
     # This argument is optional, defaults to 18888
     proxy_port_number = get_arg(1, 18888)
     entry_point(proxy_port_number)
+    #parse_absolute_url("http://www.google.com:58/")
     #string = "http://www.google.com/"
     #o = urlparse(string)
     #print("prt ", o.port, " host ", o.hostname, "path ", o.path)
