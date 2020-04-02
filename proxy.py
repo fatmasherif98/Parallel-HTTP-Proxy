@@ -126,6 +126,7 @@ def entry_point(proxy_port_number):
         threads.append(t)
     for i in threads:
         i.join()
+    socket_client.close()
     print("*" * 50)
     return None
 
@@ -172,7 +173,7 @@ def get_request(socket_client: socket, cache: dict):
             socket_server.connect(server_address)
             socket_server.send(packet)
             response_packet, a = socket_server.recvfrom(10000000)
-
+            socket_server.close()
             cache[url] = response_packet
             conn.send(response_packet)
     pass
