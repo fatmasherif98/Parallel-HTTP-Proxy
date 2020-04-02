@@ -72,6 +72,7 @@ class HttpRequestInfo(object):
         print(f"Method:", self.method)
         print(f"Host:", self.requested_host)
         print(f"Port:", self.requested_port)
+        print(f"Path:", self.requested_path)
         stringified = [": ".join([k, v]) for (k, v) in self.headers]
         print("Headers:\n", "\n".join(stringified))
 
@@ -114,66 +115,68 @@ class HttpErrorCodes(enum.Enum):
     NOT_IMPLEMENTED = 501
 
 
-
 def entry_point(proxy_port_number):
-    socket_client,socket_server = setup_sockets(proxy_port_number)
+    socket_client = setup_sockets(proxy_port_number)
     cache = dict()
-    threads=[]
+
+    threads = []
     for i in range(30):
-        t = threading.Thread(target=do_socket_logic, args=(socket_client, socket_server,cache,))
+        t = threading.Thread(target=get_request, args=(socket_client, cache,))
         t.start()
         threads.append(t)
     for i in threads:
         i.join()
-
     print("*" * 50)
     return None
 
 
 def setup_sockets(proxy_port_number):
     socket_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     proxy_address = ("127.0.0.1", proxy_port_number)
     socket_client.bind(proxy_address)
     socket_client.listen(30)
     print("Starting HTTP proxy on port:", proxy_port_number)
     print("*" * 50)
-    return socket_client ,socket_server
+    return socket_client
 
 
-def do_socket_logic(socket_client: socket,socket_server: socket,cache: dict):
-
+def get_request(socket_client: socket, cache: dict):
     (conn, address) = socket_client.accept()
+
     msg = ''
     while True:
-        packet=conn.recv(500)
-        if packet ==b'\r\n':
-            break
+        packet = conn.recv(500)
         msg = msg + packet.decode('utf-8')
-    print(msg)
-    response = http_request_pipeline(address,msg)
-    if isinstance(response,HttpErrorResponse):
-        print('Error')
-        packet = response.to_byte_array(response.to_http_string())
-        socket_client.sendto(packet,address)
-    else: #good
-        url=response.requested_host+response.requested_path
-        if url in cache:
-            packet=cache[url]
-            socket_client.sendto(packet,address)
-        else:
-            packet = response.to_byte_array(response.to_http_string())
-            server_address=(response.requested_host,response.requested_port)
+        if (msg == ''):
+            continue
+        if msg.endswith('\r\n\r\n'):
+            break
 
+    response = http_request_pipeline(address, msg)
+
+    if isinstance(response, HttpErrorResponse):
+        print(response.message)
+        packet = response.to_byte_array(response.to_http_string())
+        conn.send(packet)
+    else:  # good
+        url = response.requested_host + response.requested_path
+        if url in cache:
+            packet = cache[url]
+            conn.send(packet)
+            print("Cached")
+        else:
+            response.display()
+            packet = response.to_byte_array(response.to_http_string())
+            socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_address = (response.requested_host, response.requested_port)
             socket_server.connect(server_address)
             socket_server.send(packet)
+            response_packet, a = socket_server.recvfrom(10000000)
 
-            (server_conn, server_address) = socket_server.accept()
-            response_packet = server_conn.recv(1000000)
-
-            cache[url]=response_packet
-            socket_client.sendto(response_packet,address)
+            cache[url] = response_packet
+            conn.send(response_packet)
     pass
+
 
 def http_request_pipeline(source_addr, http_raw_data):
     # Parse HTTP request
@@ -211,7 +214,7 @@ def parse_relative_url(host_path):
 
 def parse_absolute_url(url):
     url_split = url.split(':')
-    if len(url_split) > 1 and url_split[0].lower() != "http":
+    if len(url_split) >= 1 and url_split[0].lower() != "http":
         url = "http://" + url + "/"
     parsed_url = urlparse(url)
     if parsed_url.port == None:
@@ -275,7 +278,7 @@ def validate_http_request(http_request_list):
     if url[0] == '/':
         check_host_header = True
 
-    if http_version.lower() != "http/1.0":
+    if http_version.lower() != "http/1.0" and  http_version.lower() != "http/1.1":
         return HttpRequestState.INVALID_INPUT
 
     if check_host_header:
@@ -323,7 +326,8 @@ def sanitize_http_request(request_info: HttpRequestInfo):
         request_info.requested_port = port
 
     list_headers = request_info.headers
-    if len(list_headers) > 1 and list_headers[0][0].strip() == "Host": #first list in header_list, first item in this list
+    if len(list_headers) >= 1 and list_headers[0][0].strip() == "Host": #first list in header_list, first item in this list
+
         return
     host_header = ["Host", request_info.requested_host]
     request_info.headers.insert(0, host_header)
